@@ -7,10 +7,9 @@ import fs from 'fs';
 import path from 'path';
 import slugify from 'slugify';
 
-// Default to Local News feed if nothing passed via inputs
-const FEEDS = (process.env.FEEDS || 'https://www.boston.com/tag/local-news/feed')
+// Default to MSN feed (can override via FEEDS env)
+const FEEDS = (process.env.FEEDS || 'https://boston.com/bdc-msn-rss')
   .split(',').map(s => s.trim()).filter(Boolean);
-
 const MAX_STORIES = parseInt(process.env.MAX_STORIES || '12', 10);
 
 function absolutify(u, base){ if(!u) return null; try { return new URL(u, base).href } catch { return u } }
@@ -25,17 +24,16 @@ function pick($, sels){
 
 function extractArticle(html, baseUrl){
   const $ = cheerio.load(html);
-
   $('img').each((_,img)=>{
     const el=$(img);
     const ds=el.attr('data-src')||el.attr('data-original')||el.attr('data-image')||el.attr('data-lazy-src');
     if(ds && !el.attr('src')) el.attr('src', ds);
   });
 
-  const title  = pick($,['meta[property="og:title"]','meta[name="twitter:title"]','h1','title']);
-  const dek    = pick($,['meta[property="og:description"]','meta[name="description"]','.dek, .subhead, .article__dek']);
-  const author = pick($,['meta[name="author"]','[itemprop="author"]','.byline, .c-byline, .article__byline, .byline-name']);
-  const pub    = pick($,['meta[property="article:published_time"]','time[datetime]','time']);
+  const title = pick($,['meta[property="og:title"]','meta[name="twitter:title"]','h1','title']);
+  const dek   = pick($,['meta[property="og:description"]','meta[name="description"]','.dek, .subhead, .article__dek']);
+  const author= pick($,['meta[name="author"]','[itemprop="author"]','.byline, .c-byline, .article__byline, .byline-name']);
+  const pub   = pick($,['meta[property="article:published_time"]','time[datetime]','time']);
 
   let bodyEl = $('[itemprop="articleBody"]').first();
   if(!bodyEl.length) bodyEl = $('article').first();
@@ -44,7 +42,6 @@ function extractArticle(html, baseUrl){
     const paras=[]; $('p').each((_,p)=>{ const t=$(p).text().trim(); if(t && t.length>60) paras.push(`<p>${$(p).html()}</p>`); });
     bodyEl = { html: () => paras.join('\n') };
   }
-
   bodyEl.find && bodyEl.find('a').each((_,a)=>{ const el=$(a); el.attr('href', absolutify(el.attr('href'), baseUrl)); });
   bodyEl.find && bodyEl.find('img').each((_,i)=>{ const el=$(i); el.attr('src', absolutify(el.attr('src'), baseUrl)); });
 
@@ -92,14 +89,15 @@ async function main(){
   const outDir = path.join('docs','stories');
   fs.mkdirSync(outDir, { recursive: true });
 
-  // Always start with a manifest
-  const manifestPath = path.join(outDir, 'manifest.json');
-  let manifest = [];
-  try { manifest = JSON.parse(fs.readFileSync(manifestPath,'utf8')); } catch { /* empty ok */ }
-
   const template = fs.readFileSync(path.join('templates','story.ejs'),'utf8');
 
+  // Load existing manifest if any
+  const manifestPath = path.join(outDir, 'manifest.json');
+  let manifest = [];
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath,'utf8')); } catch {}
   const seen = new Set(manifest.map(m => m.source));
+
+  // Gather new items
   let gathered = [];
   for (const feed of FEEDS){
     try {
@@ -140,7 +138,7 @@ async function main(){
     }
   }
 
-  // Always write a manifest, even if empty
+  // Always write a manifest (even if empty)
   manifest = manifest.slice(0, 200);
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
