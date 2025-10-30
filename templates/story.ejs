@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title><%= title %> — Boston.com (1995 Retro)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../assets/styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-graphic">
+      <img src="https://i.imgur.com/o34tFuK.png" alt="boston.com retro header">
+    </div>
+  </div>
+  <div class="dateline">RETRO VIEW — Rendered from RSS</div>
+  <div class="wrap">
+    <div class="box">
+      <div class="kicker">Boston.com — retro render</div>
+      <h1 class="title"><%= title %></h1>
+      <% if (dek) { %><p class="deck"><%= dek %></p><% } %>
+      <p class="meta"><% if (author) { %>By <%= author %><% } %><% if (pub) { %> | <%= pub %><% } %></p>
+      <% if (hero) { %><div class="hero"><img src="<%= hero %>" alt=""></div><% } %>
+      <div class="body"><%- body %></div>
+      <p class="meta">Source: <a href="<%= sourceUrl %>" target="_blank" rel="noopener"><%= sourceUrl %></a></p>
+      <p><a href="../">« Back to index</a></p>
+    </div>
+  </div>
+  <div class="footer">&copy; 1995–2000 Retro shell (demo). Content &copy; their respective owners.</div>
+</body>
+</html>

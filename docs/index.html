@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Boston.com — 1995 Retro Feed</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+  <div class="header">
+    <div class="header-graphic">
+      <img src="https://i.imgur.com/o34tFuK.png" alt="boston.com retro header">
+    </div>
+  </div>
+  <div class="dateline">RETRO VIEW — Latest from the feed</div>
+  <div class="wrap">
+    <div class="box">
+      <h1 class="title">Top stories</h1>
+      <div id="list" class="grid"></div>
+      <p class="kicker">This list auto-refreshes via GitHub Actions.</p>
+    </div>
+  </div>
+  <div class="footer">&copy; 1995–2000 Retro shell (demo). Content &copy; their respective owners.</div>
+  <script>
+    fetch('stories/manifest.json').then(r=>r.json()).then(items=>{
+      const list = document.getElementById('list');
+      if (!items.length) {
+        list.innerHTML = '<div class="card"><div class="small">No stories yet — the Action will populate this shortly.</div></div>';
+        return;
+      }
+      items.forEach(it=>{
+        const div = document.createElement('div');
+        div.className='card';
+        div.innerHTML = '<h3><a href="'+it.path+'">'+it.title+'</a></h3>'+
+                        '<div class="small">'+(it.pub||'')+'</div>'+
+                        (it.dek?('<div class="small">'+it.dek+'</div>'):'')+
+                        '<div class="small"><a href="'+it.source+'" target="_blank" rel="noopener">Original</a></div>';
+        list.appendChild(div);
+      });
+    }).catch(()=>{
+      document.getElementById('list').innerHTML = '<div class="card"><div class="small">No manifest yet.</div></div>';
+    });
+  </script>
+</body>
+</html>
