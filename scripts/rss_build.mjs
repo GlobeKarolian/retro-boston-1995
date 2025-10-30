@@ -7,9 +7,10 @@ import fs from 'fs';
 import path from 'path';
 import slugify from 'slugify';
 
-// Default feeds include Local News tag feed; override via workflow inputs if desired
-const feedEnv = process.env.FEEDS || 'https://www.boston.com/tag/local-news/feed';
-const FEEDS = feedEnv.split(',').map(s => s.trim()).filter(Boolean);
+// Default to Local News feed if nothing passed via inputs
+const FEEDS = (process.env.FEEDS || 'https://www.boston.com/tag/local-news/feed')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
 const MAX_STORIES = parseInt(process.env.MAX_STORIES || '12', 10);
 
 function absolutify(u, base){ if(!u) return null; try { return new URL(u, base).href } catch { return u } }
@@ -24,16 +25,17 @@ function pick($, sels){
 
 function extractArticle(html, baseUrl){
   const $ = cheerio.load(html);
+
   $('img').each((_,img)=>{
     const el=$(img);
     const ds=el.attr('data-src')||el.attr('data-original')||el.attr('data-image')||el.attr('data-lazy-src');
     if(ds && !el.attr('src')) el.attr('src', ds);
   });
 
-  const title = pick($,['meta[property="og:title"]','meta[name="twitter:title"]','h1','title']);
-  const dek   = pick($,['meta[property="og:description"]','meta[name="description"]','.dek, .subhead, .article__dek']);
-  const author= pick($,['meta[name="author"]','[itemprop="author"]','.byline, .c-byline, .article__byline, .byline-name']);
-  const pub   = pick($,['meta[property="article:published_time"]','time[datetime]','time']);
+  const title  = pick($,['meta[property="og:title"]','meta[name="twitter:title"]','h1','title']);
+  const dek    = pick($,['meta[property="og:description"]','meta[name="description"]','.dek, .subhead, .article__dek']);
+  const author = pick($,['meta[name="author"]','[itemprop="author"]','.byline, .c-byline, .article__byline, .byline-name']);
+  const pub    = pick($,['meta[property="article:published_time"]','time[datetime]','time']);
 
   let bodyEl = $('[itemprop="articleBody"]').first();
   if(!bodyEl.length) bodyEl = $('article').first();
@@ -42,6 +44,7 @@ function extractArticle(html, baseUrl){
     const paras=[]; $('p').each((_,p)=>{ const t=$(p).text().trim(); if(t && t.length>60) paras.push(`<p>${$(p).html()}</p>`); });
     bodyEl = { html: () => paras.join('\n') };
   }
+
   bodyEl.find && bodyEl.find('a').each((_,a)=>{ const el=$(a); el.attr('href', absolutify(el.attr('href'), baseUrl)); });
   bodyEl.find && bodyEl.find('img').each((_,i)=>{ const el=$(i); el.attr('src', absolutify(el.attr('src'), baseUrl)); });
 
@@ -65,11 +68,18 @@ function extractArticle(html, baseUrl){
 }
 
 async function fetchFeed(url){
-  const xml = await axios.get(url, { timeout: 20000 }).then(r => r.data);
+  const xml = await axios.get(url, {
+    timeout: 20000,
+    headers: {
+      'User-Agent': 'RetroBoston-RSS/1.0 (+https://github.com/)',
+      'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8'
+    }
+  }).then(r => r.data);
+
   const parser = new XMLParser({ ignoreAttributes:false, attributeNamePrefix:'' });
   const obj = parser.parse(xml);
   const channel = obj.rss?.channel || obj.feed;
-  const items = channel.item || channel.entry || [];
+  const items = channel?.item || channel?.entry || [];
   return items.map(it => ({
     title: (it.title && it.title.toString()) || '',
     link: (typeof it.link === 'object' && it.link?.href) || it.link || '',
@@ -82,10 +92,12 @@ async function main(){
   const outDir = path.join('docs','stories');
   fs.mkdirSync(outDir, { recursive: true });
 
-  const template = fs.readFileSync(path.join('templates','story.ejs'),'utf8');
-  let manifest = [];
+  // Always start with a manifest
   const manifestPath = path.join(outDir, 'manifest.json');
-  try { manifest = JSON.parse(fs.readFileSync(manifestPath,'utf8')); } catch {}
+  let manifest = [];
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath,'utf8')); } catch { /* empty ok */ }
+
+  const template = fs.readFileSync(path.join('templates','story.ejs'),'utf8');
 
   const seen = new Set(manifest.map(m => m.source));
   let gathered = [];
@@ -105,21 +117,33 @@ async function main(){
 
   for (const it of gathered){
     try {
-      const resp = await axios.get(it.link, { headers:{'User-Agent':'RetroBoston/RSSAction'}, timeout: 20000 });
+      const resp = await axios.get(it.link, {
+        headers: { 'User-Agent':'RetroBoston/ArticleFetch (+https://github.com/)' },
+        timeout: 20000
+      });
       const article = extractArticle(resp.data, it.link);
       const slug = (slugify(article.title, { lower:true, strict:true }).slice(0,80) || 'story');
       const rel = `stories/${slug}.html`;
+
       const html = ejs.render(template, { ...article, sourceUrl: it.link });
       fs.writeFileSync(path.join(outDir, `${slug}.html`), html, 'utf8');
 
-      manifest.unshift({ title: article.title, path: rel, pub: article.pub || it.pubDate || '', dek: article.dek || '', source: it.link });
+      manifest.unshift({
+        title: article.title,
+        path: rel,
+        pub: article.pub || it.pubDate || '',
+        dek: article.dek || '',
+        source: it.link
+      });
     } catch (e) {
       console.error('Article error:', it.link, e.message);
     }
   }
 
+  // Always write a manifest, even if empty
   manifest = manifest.slice(0, 200);
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
   console.log('Built', Math.min(gathered.length, MAX_STORIES), 'stories.');
 }
 
