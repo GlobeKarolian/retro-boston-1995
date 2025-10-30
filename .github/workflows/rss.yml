@@ -30,6 +30,13 @@ jobs:
       - name: Install
         run: npm install
 
+      # Ensure the target folder exists + seed an empty manifest,
+      # so the homepage won't 404 even if nothing is built.
+      - name: Prep site folder
+        run: |
+          mkdir -p docs/stories
+          test -f docs/stories/manifest.json || echo "[]" > docs/stories/manifest.json
+
       - name: Build from RSS
         env:
           FEEDS: ${{ inputs.feeds }}
